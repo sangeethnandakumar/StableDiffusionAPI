@@ -12,9 +12,11 @@ export function Home() {
                 ["GPU", "Time"], [4, 5.5], [8, 12]
         ]);
 
+    const SERVER_URL = "https://localhost:7125"
+
     useEffect(() => {
         setInterval(() => {
-            fetch(window.location.origin + "/api/diffusion/health")
+            fetch(SERVER_URL + "/api/diffusion/health")
                 .then((res) => res.json())
                 .then((json) => {
                     let used = Math.round(json.gpu.used);
