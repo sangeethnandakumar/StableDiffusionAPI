@@ -1,4 +1,6 @@
 using diffuisiondashboard.Connectify;
+using Diffusion.Engine.Engines.Meta;
+using Diffusion.Engine.Engines.TextToImage;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,6 +14,9 @@ builder.Services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(o => o.JsonSeri
 builder.Services.AddHostedService<ScrapperService>();
 builder.Services.AddCors();
 builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddSingleton<IMetaEngine, MetaEngine>();
+builder.Services.AddSingleton<ITextToImageEngine, TextToImageEngine>();
 
 var app = builder.Build();
 

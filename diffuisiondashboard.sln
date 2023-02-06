@@ -3,9 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.3.32929.385
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "diffuisiondashboard", "diffuisiondashboard\diffuisiondashboard.csproj", "{261177EF-4EEE-45DE-BCC7-77AACDC3AED6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "diffuisiondashboard", "diffuisiondashboard\diffuisiondashboard.csproj", "{261177EF-4EEE-45DE-BCC7-77AACDC3AED6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Diffusion.Models", "Diffusion.Models\Diffusion.Models.csproj", "{6B2EB935-733D-4545-9A04-BEB511402E0E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Diffusion.Models", "Diffusion.Models\Diffusion.Models.csproj", "{6B2EB935-733D-4545-9A04-BEB511402E0E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Diffusion.Engine", "Diffusion.Engine\Diffusion.Engine.csproj", "{E2FC9954-ADCB-4469-8A07-9A3F1F911D06}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{6B2EB935-733D-4545-9A04-BEB511402E0E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6B2EB935-733D-4545-9A04-BEB511402E0E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6B2EB935-733D-4545-9A04-BEB511402E0E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E2FC9954-ADCB-4469-8A07-9A3F1F911D06}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E2FC9954-ADCB-4469-8A07-9A3F1F911D06}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E2FC9954-ADCB-4469-8A07-9A3F1F911D06}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E2FC9954-ADCB-4469-8A07-9A3F1F911D06}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
