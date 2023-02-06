@@ -1,41 +1,37 @@
 ﻿using diffuisiondashboard.Repository;
+using Diffusion.Engine.Engines.Meta;
+using Diffusion.Engine.Engines.TextToImage;
 using Diffusion.Models;
+using Diffusion.Models.SDModels;
+using Diffusion.Models.UserRequests;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json;
 using RestSharp;
-using System.IO;
+using System.Diagnostics;
 
 namespace diffuisiondashboard.Controllers
 {
 
-    public class ModelParameters
-    {
-        public string Prompt { get; set; }
-        public string NegativePrompt { get; set; } = "";
-        public int Width { get; set; } = 512;
-        public int Height { get; set; } = 512;
-        public int SamplingSteps { get; set; } = 20;
-        public int CFGScale { get; set; } = 5;
-        public int Seed { get; set; } = -1;
-        public string Sampler { get; set; } = "Euler a";
-        public string SessionHash { get; set; } = "niukm1hmeup";
-        public string RootFolder { get; set; } = AppContext.BaseDirectory;
-        public Guid FileGuid { get; set; } = Guid.NewGuid();
-    }
+
 
     [Route("api/[controller]")]
     [ApiController]
     public class DiffusionController : ControllerBase
     {
-        private static readonly string[] Summaries = new[]
-        {
-            "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-        };
         private readonly IHttpContextAccessor httpContextAccessor;
+        private readonly IMetaEngine meta;
+        private readonly ITextToImageEngine textToImg;
+        private readonly BaseRequest baseRequest;
 
-        public DiffusionController(IHttpContextAccessor httpContextAccessor)
+        public DiffusionController(IHttpContextAccessor context, IMetaEngine meta, ITextToImageEngine textToImg)
         {
-            this.httpContextAccessor = httpContextAccessor;
+            this.httpContextAccessor = context;
+            this.meta = meta;
+            this.textToImg = textToImg;
+            baseRequest = new BaseRequest
+            {
+                BaseURL = new Uri("http://127.0.0.1:7860/"),
+                TextToImageSaveLoc = @"D:\SD v2\UI\stable-diffusion-webui\outputs\txt2img-images"
+            };
         }
 
         [HttpGet("health")]
@@ -84,7 +80,96 @@ namespace diffuisiondashboard.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetImg([FromQuery] ModelParameters parameters)
+        [Route("Models")]
+        public async Task<IActionResult> Models()
+        {
+            try
+            {
+                if (IsAuthenticated())
+                {
+                    //Step 1: Generate image
+                    var response = meta.GetAllModels(baseRequest);
+                    return Ok(response);
+                }
+                else
+                {
+                    return BadRequest("Invalid API_KEY. Security validation failed. You cannot consume this service");
+                }
+            }
+            catch (Exception)
+            {
+                return BadRequest("The system went into an error or cannot handle load. The service is temporarly haulted. Please try again or contact developer for support");
+            }
+        }
+
+        [HttpGet]
+        [Route("SwitchModel")]
+        public async Task<IActionResult> SwitchModel([FromQuery] string modelName)
+        {
+            try
+            {
+                if (IsAuthenticated())
+                {
+                    //Step 1: Generate image
+                    var allModels = meta.GetAllModels(baseRequest);
+                    if(allModels.InstalledModels.FirstOrDefault(x=>x.ModelName == modelName) is not null)
+                    {
+                        var sw = Stopwatch.StartNew();
+                        meta.SwitchModel(baseRequest, modelName);
+                        sw.Stop();
+                        return Ok($"Successfully loaded model '{modelName}' into memory under {sw.Elapsed}secs");
+                    }
+                    return BadRequest("Cannot switch model. Make sure you spelled correctly. Hit the models endpoint to fetch a list of installed models");                 
+                }
+                else
+                {
+                    return BadRequest("Invalid API_KEY. Security validation failed. You cannot consume this service");
+                }
+            }
+            catch (Exception)
+            {
+                return BadRequest("The system went into an error or cannot handle load. The service is temporarly haulted. Please try again or contact developer for support");
+            }
+        }
+
+
+        [HttpGet]
+        [Route("TextToImage")]
+        public async Task<IActionResult> TextToImg([FromQuery] TextToImageUserRequest request)
+        {
+            try
+            {
+                if (IsAuthenticated())
+                {
+                    //Step 1: Generate image
+                    textToImg.GenerateImage(baseRequest, request);
+
+                    //Step 2: Grab image
+                    var ext = new List<string> { "png" };
+                    var targetFile = Directory
+                        .EnumerateFiles(baseRequest.TextToImageSaveLoc, "*.*", SearchOption.AllDirectories)
+                        .Where(s => ext.Contains(Path.GetExtension(s).TrimStart('.').ToLowerInvariant()))
+                        .OrderByDescending(d => new FileInfo(d).LastWriteTime)
+                        .FirstOrDefault();
+                    if (targetFile is not null)
+                    {
+                        MemoryStream ms = new MemoryStream(System.IO.File.ReadAllBytes(targetFile));
+                        return new FileStreamResult(ms, "image/png");
+                    }
+                }
+                else
+                {
+                    return BadRequest("Invalid API_KEY. Security validation failed. You cannot consume this service");
+                }
+                return BadRequest("The system went into an error or cannot handle load. The service is temporarly haulted. Please try again or contact developer for support");
+            }
+            catch (Exception)
+            {
+                return BadRequest("The system went into an error or cannot handle load. The service is temporarly haulted. Please try again or contact developer for support");
+            }
+        }
+
+        private bool IsAuthenticated()
         {
             var APIConfig = new KeyRepo("APICONFIG").GetAll().FirstOrDefault();
             if (APIConfig is null)
@@ -95,102 +180,17 @@ namespace diffuisiondashboard.Controllers
                 });
                 APIConfig = new KeyRepo("APICONFIG").GetAll().FirstOrDefault();
             }
-            var headerValue = httpContextAccessor.HttpContext.Request.Headers["API_KEY"].ToString();
-            if (headerValue is not null && headerValue == APIConfig.API_KEY)
+            var containsHeader = httpContextAccessor.HttpContext.Request.Headers.ContainsKey("API_KEY");
+            if (containsHeader)
             {
-                try
+                var headerValue = httpContextAccessor.HttpContext.Request.Headers["API_KEY"].ToString();
+                if (headerValue == APIConfig.API_KEY)
                 {
-                    var url = "http://127.0.0.1:7860/api/predict/";
-
-
-                    var payloadBody = $@"{{
-                      ""fn_index"": 85,
-                      ""data"": [
-                        ""task(gnn6h7mmet875q4)"",
-                        ""{parameters.Prompt}{", " + parameters.FileGuid}"",
-                        ""{parameters.NegativePrompt}{", " + parameters.FileGuid}"",
-                        [],
-                        {parameters.SamplingSteps},
-                        ""{parameters.Sampler}"",
-                        false,
-                        false,
-                        1,
-                        1,
-                        {parameters.CFGScale},
-                        {parameters.Seed},
-                        -1,
-                        0,
-                        0,
-                        0,
-                        false,
-                        {parameters.Height},
-                        {parameters.Width},
-                        false,
-                        0.7,
-                        2,
-                        ""Latent"",
-                        0,
-                        0,
-                        0,
-                        [],
-                        ""None"",
-                        false,
-                        false,
-                        ""positive"",
-                        ""comma"",
-                        0,
-                        false,
-                        false,
-                        """",
-                        ""Seed"",
-                        """",
-                        ""Nothing"",
-                        """",
-                        ""Nothing"",
-                        """",
-                        true,
-                        false,
-                        false,
-                        false,
-                        0,
-                        [
-                          {{
-                            ""name"": ""{parameters.RootFolder.Replace("\\", "\\\\")}{parameters.FileGuid}.png"",
-                            ""data"": ""file={parameters.RootFolder.Replace("\\", "\\\\")}{parameters.FileGuid}.png"",
-                            ""is_file"": true
-                          }}
-                        ],
-                        ""{{\""prompt\"": \""a young woman, street smiling, backpack, ponytails, epic realistic, photo, faded, complex stuff around, intricate background, soaking wet, neutral colors, ((((hdr)))), ((((muted colors)))), intricate scene, artstation, intricate details, vignette\"", \""all_prompts\"": [\""a young woman, street smiling, backpack, ponytails, epic realistic, photo, faded, complex stuff around, intricate background, soaking wet, neutral colors, ((((hdr)))), ((((muted colors)))), intricate scene, artstation, intricate details, vignette\""], \""negative_prompt\"": \""deformed, bad anatomy, disfigured, poorly drawn face, mutation, mutated, extra limb, ugly, disgusting, poorly drawn hands, missing limb, floating limbs, disconnected limbs, malformed hands, blurry, ((((mutated hands and fingers)))), watermark, watermarked, oversaturated, censored, distorted hands, amputation, missing hands, obese, doubled face, double hands\"", \""all_negative_prompts\"": [\""deformed, bad anatomy, disfigured, poorly drawn face, mutation, mutated, extra limb, ugly, disgusting, poorly drawn hands, missing limb, floating limbs, disconnected limbs, malformed hands, blurry, ((((mutated hands and fingers)))), watermark, watermarked, oversaturated, censored, distorted hands, amputation, missing hands, obese, doubled face, double hands\""], \""seed\"": 737670053, \""all_seeds\"": [737670053], \""subseed\"": 473922482, \""all_subseeds\"": [473922482], \""subseed_strength\"": 0, \""width\"": 1080, \""height\"": 720, \""sampler_name\"": \""Euler a\"", \""cfg_scale\"": 5, \""steps\"": 28, \""batch_size\"": 1, \""restore_faces\"": false, \""face_restoration_model\"": null, \""sd_model_hash\"": \""1254103966\"", \""seed_resize_from_w\"": 0, \""seed_resize_from_h\"": 0, \""denoising_strength\"": null, \""extra_generation_params\"": {{}}, \""index_of_first_image\"": 0, \""infotexts\"": [\""a young woman, street smiling, backpack, ponytails, epic realistic, photo, faded, complex stuff around, intricate background, soaking wet, neutral colors, ((((hdr)))), ((((muted colors)))), intricate scene, artstation, intricate details, vignette\\nNegative prompt: deformed, bad anatomy, disfigured, poorly drawn face, mutation, mutated, extra limb, ugly, disgusting, poorly drawn hands, missing limb, floating limbs, disconnected limbs, malformed hands, blurry, ((((mutated hands and fingers)))), watermark, watermarked, oversaturated, censored, distorted hands, amputation, missing hands, obese, doubled face, double hands\\nSteps: 28, Sampler: Euler a, CFG scale: 5, Seed: 737670053, Size: 1080x720, Model hash: 1254103966, Model: protogenV22Anime_22\""], \""styles\"": [], \""job_timestamp\"": \""20230205235127\"", \""clip_skip\"": 1, \""is_using_inpainting_conditioning\"": false}}"",
-                        ""<p>a young woman, street smiling, backpack, ponytails, epic realistic, photo, faded, complex stuff around, intricate background, soaking wet, neutral colors, ((((hdr)))), ((((muted colors)))), intricate scene, artstation, intricate details, vignette<br>\nNegative prompt: deformed, bad anatomy, disfigured, poorly drawn face, mutation, mutated, extra limb, ugly, disgusting, poorly drawn hands, missing limb, floating limbs, disconnected limbs, malformed hands, blurry, ((((mutated hands and fingers)))), watermark, watermarked, oversaturated, censored, distorted hands, amputation, missing hands, obese, doubled face, double hands<br>\nSteps: 28, Sampler: Euler a, CFG scale: 5, Seed: 737670053, Size: 1080x720, Model hash: 1254103966, Model: protogenV22Anime_22</p>"",
-                        ""<p></p><div class='performance'><p class='time'>Time taken: <wbr>32.10s</p><p class='vram'>Torch active/reserved: 1857/2280 MiB, <wbr>Sys VRAM: 4070/4096 MiB (99.37%)</p></div>""
-                      ],
-                      ""session_hash"": ""{parameters.SessionHash}""
-                    }}";
-
-                    var client = new RestClient(url);
-                    var request = new RestRequest();
-                    request.AddStringBody(payloadBody, DataFormat.Json);
-                    var response = client.Post(request);
+                    return true;
                 }
-                catch (Exception)
-                {
-                }
-                //Check if any image generated with that prompt
-                //C:\Users\instaread_summaries\Documents\stable-diffusion-webui-master\outputs\txt2img-images
-                var ext = new List<string> { "png" };
-                var targetFile = Directory
-                    .EnumerateFiles(@"D:\SD v2\UI\stable-diffusion-webui\outputs\txt2img-images", "*.*", SearchOption.AllDirectories)
-                    .Where(s => ext.Contains(Path.GetExtension(s).TrimStart('.').ToLowerInvariant()))
-                    .OrderByDescending(d => new FileInfo(d).LastWriteTime)
-                    .FirstOrDefault();
-                if (targetFile is not null)
-                {
-                    MemoryStream ms = new MemoryStream(System.IO.File.ReadAllBytes(targetFile));
-                    return new FileStreamResult(ms, "image/png");
-                }
-                return BadRequest("Unable to generate image. The GPU has crashed (Out of memory) during generation of image. This can be caused when generating higher resolution images or too freequent generations. Please contact support to reset GPU.");
+                return false;
             }
-            return BadRequest("You're not authorized to access this API.");
+            return false;
         }
     }
 }
